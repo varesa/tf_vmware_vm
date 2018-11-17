@@ -1,24 +1,45 @@
-variable "name" {}
-variable "template" {}
 
-variable "hostname" {}
-variable "network" {}
-variable "address" {}
-variable "gateway" {}
+//
+// Module inputs
+// 
 
-variable "role" {
-    default = ""
+variable "name" {}      // VM Name
+variable "hostname" {}  // VM Hostname (DNS)
+variable "address" {}   // VM IP Address
+
+// Template specification + variables (e.g. PSK for puppet autosign)
+variable "template_config" { type = "map" }
+// Optional puppet role
+variable "role" { default = "" }
+
+// Network configuration (portgroup + gateway)
+variable "network_config" { 
+    type = "map" 
+    default = {
+        network = "vm-16-guest"
+        gateway = "192.168.16.1"
+    }
 }
-variable "puppet_psk" {
-    default = "none"
+
+// Resource configuration (CPU + RAM)
+variable "resource_config" { 
+    type = "map" 
+    default = {
+        cpu_cores = 1
+        ram_mb = 1024
+    }
 }
+
+//
+// Config templates
+//
 
 data "template_file" "network" {
     template = "${file("${path.module}/templates/network.tpl")}"
 
     vars {
         address = "${var.address}"
-        gateway = "${var.gateway}"
+        gateway = "${var.network_config["gateway"]}"
     }
 }
 
@@ -35,7 +56,7 @@ data "template_file" "csr_attributes" {
     template = "${file("${path.module}/templates/csr_attributes.tpl")}"
 
     vars {
-        psk = "${var.puppet_psk}"
+        psk = "${var.template_config["puppet_psk"]}"
     }
 }
 
@@ -48,23 +69,31 @@ data "template_file" "userdata" {
     }
 }
 
+//
+// VMware resources
+//
+
 data "vsphere_virtual_machine" "template" {
-  name          = "Z_Templates/${var.template}"
+  name          = "Z_Templates/${var.template_config["name"]}"
   datacenter_id = "${data.vsphere_datacenter.tampere-dc.id}"
 }
 
 data "vsphere_network" "network" {
-  name          = "${var.network}"
+  name          = "${var.network_config["network"]}"
   datacenter_id = "${data.vsphere_datacenter.tampere-dc.id}"
 }
+
+//
+// The VM itself
+//
 
 resource "vsphere_virtual_machine" "vm" {
     name             = "${var.name}"
     resource_pool_id = "${data.vsphere_compute_cluster.vsan-cluster.resource_pool_id}"
     datastore_id     = "${data.vsphere_datastore.vsan-datastore.id}"
 
-    num_cpus = 2
-    memory   = 1024
+    num_cpus = "${var.resource_config["cpu_cores"]}"
+    memory   = "${var.resource_config["ram_mb"]}"
     guest_id = "${data.vsphere_virtual_machine.template.guest_id}"
 
     network_interface {

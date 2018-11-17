@@ -5,6 +5,7 @@ config:
     subnets:
       - type: static
         address: ${address}
+        netmask: 255.255.255.0
         gateway: ${gateway}
         dns_nameservers:
           - 10.0.110.30

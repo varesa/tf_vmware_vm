@@ -27,6 +27,7 @@ variable "resource_config" {
     default = {
         cpu_cores = 1
         ram_mb = 1024
+        data_gb = 0
     }
 }
 
@@ -87,7 +88,51 @@ data "vsphere_network" "network" {
 // The VM itself
 //
 
+// With data disk
+
+resource "vsphere_virtual_machine" "vm-with-data" {
+    count = "${var.resource_config["data_gb"] > 0 ? 1 : 0}"
+
+    name             = "${var.name}"
+    resource_pool_id = "${data.vsphere_compute_cluster.vsan-cluster.resource_pool_id}"
+    datastore_id     = "${data.vsphere_datastore.vsan-datastore.id}"
+
+    num_cpus = "${var.resource_config["cpu_cores"]}"
+    memory   = "${var.resource_config["ram_mb"]}"
+    guest_id = "${data.vsphere_virtual_machine.template.guest_id}"
+
+    network_interface {
+        network_id = "${data.vsphere_network.network.id}"
+    }
+
+    disk {
+        label = "disk0"
+        size  = "${data.vsphere_virtual_machine.template.disks.0.size}"
+    }
+
+    disk {
+        label = "data0"
+        size = "${var.resource_config["data_gb"]}"
+        unit_number = 1
+    }
+
+    extra_config {
+        guestinfo.metadata = "${base64encode("${data.template_file.metadata.rendered}")}"
+        guestinfo.metadata.encoding = "base64"
+        guestinfo.userdata = "${base64encode("${data.template_file.userdata.rendered}")}"
+        guestinfo.userdata.encoding = "base64"
+    }
+
+    clone {
+        template_uuid = "${data.vsphere_virtual_machine.template.id}"
+    }
+}
+
+// Without data disk
+
 resource "vsphere_virtual_machine" "vm" {
+    count = "${var.resource_config["data_gb"] > 0 ? 0 : 1}"
+
     name             = "${var.name}"
     resource_pool_id = "${data.vsphere_compute_cluster.vsan-cluster.resource_pool_id}"
     datastore_id     = "${data.vsphere_datastore.vsan-datastore.id}"
@@ -116,6 +161,3 @@ resource "vsphere_virtual_machine" "vm" {
         template_uuid = "${data.vsphere_virtual_machine.template.id}"
     }
 }
-
-
-
